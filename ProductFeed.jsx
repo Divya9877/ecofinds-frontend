@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const LS_PRODUCTS = "eco_products_v1";
+const LS_USERS = "eco_users_v1";
+const LS_AUTH = "eco_auth_v1";
 
-export default function ProductFeed({ auth }) {
+export default function ProductFeed({ auth, setAuth }) {
   const [products, setProducts] = useState([]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [sortBy, setSortBy] = useState("relevance"); // relevance | price-asc | price-desc | newest
+  const nav = useNavigate();
 
   useEffect(() => {
     const all = JSON.parse(localStorage.getItem(LS_PRODUCTS) || "[]");
@@ -61,20 +64,49 @@ export default function ProductFeed({ auth }) {
     newest: "Newest First"
   };
 
+  // Export CSV helper
+  function exportCSV(list) {
+    const rows = [["id", "title", "category", "price", "owner"], ...list.map(p => [p.id, p.title, p.category, p.price, p.owner])];
+    const csv = rows.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "products.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Clear filters helper
+  function clearFilters() {
+    setQuery("");
+    setCategory("");
+    setSortBy("relevance");
+  }
+
+  // Add to cart helper
+  function handleAddToCart(product) {
+    if (!auth) {
+      nav("/login");
+      return;
+    }
+    const users = JSON.parse(localStorage.getItem(LS_USERS) || "[]");
+    const userIdx = users.findIndex((u) => u.email === auth.email);
+    if (userIdx === -1) return;
+    const user = users[userIdx];
+    user.cart = user.cart || [];
+    if (!user.cart.find((ci) => ci.id === product.id)) user.cart.push(product);
+    users.splice(userIdx, 1, user);
+    localStorage.setItem(LS_USERS, JSON.stringify(users));
+    alert("Added to cart");
+  }
+
   return (
     <div className="container">
       <h2>Browse Products</h2>
 
       {/* Search + Filter + Sort controls */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          flexWrap: "wrap",
-          marginBottom: 10
-        }}
-      >
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
         <input
           placeholder="Search by title or description..."
           value={query}
@@ -82,28 +114,21 @@ export default function ProductFeed({ auth }) {
           style={{ flex: 1, minWidth: 200 }}
         />
 
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          style={{ minWidth: 160 }}
-        >
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ minWidth: 160 }}>
           {categories.map((c) => (
-            <option key={c} value={c}>
-              {c || "All Categories"}
-            </option>
+            <option key={c} value={c}>{c || "All Categories"}</option>
           ))}
         </select>
 
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          style={{ minWidth: 160 }}
-        >
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ minWidth: 160 }}>
           <option value="relevance">Sort: Relevance</option>
           <option value="price-asc">Sort: Price — Low to High</option>
           <option value="price-desc">Sort: Price — High to Low</option>
           <option value="newest">Sort: Newest First</option>
         </select>
+
+        <button className="btn ghost" onClick={clearFilters}>Clear filters</button>
+        <button className="btn" onClick={() => exportCSV(sorted)}>Export CSV</button>
       </div>
 
       {/* ✅ Results summary */}
@@ -131,6 +156,9 @@ export default function ProductFeed({ auth }) {
                 </Link>
                 <div className="price">₹ {p.price}</div>
                 <div className="meta">{p.category}</div>
+                <div className="actions" style={{ marginTop: 8 }}>
+                  <button className="btn small" onClick={() => handleAddToCart(p)}>Add to Cart</button>
+                </div>
               </div>
             </div>
           ))
